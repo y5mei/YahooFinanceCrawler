@@ -1,6 +1,7 @@
 # To setup chromedriver for OS:
 # https://www.browserstack.com/guide/run-selenium-tests-using-selenium-chromedriver
 import os
+from datetime import datetime
 
 import pandas
 from random import randint
@@ -142,6 +143,65 @@ def downloadDividendData(stock_name: str):
         os.rename(stock_name+".csv", stock_dividend_file_name)
     return stock_dividend_file_name
 
+# https://ca.investing.com/indices/crsp-us-total-market-historical-data
+def parseNumber(param):
+    pass
+# http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html#Research
+def readFF3Factor_ResearchData(stockName: str, start_date="2003-1-1", end_date="2012-12-31"):
+    stock_name = stockName
+    stock_file_name = "./stock_price/" + stock_name + ".csv"  # the historical price file
+    result_file_name = "./result/" + stock_name + ".csv"  # the historical price file
+    df = pandas.read_csv(stock_file_name)
+    # for i, col in df.iterrows():
+    #     df.at[i, "Date"]= str(col[0])[:4]+str(col[0])[4:6]+"01"
+    df["Date"] = pandas.to_datetime(df.Date,format='%Y%m')
+    # keep only the date and close price
+    # df = df[['Date', 'Price']]
+
+    df = df.set_index(['Date'])
+    df = df.loc[start_date:end_date]
+    # # df['Monthly_Return'] = df['Monthly_Return'].apply(lambda x: format(x, '.2%'))  # change to percentage
+    df = df.reindex(index=df.index[::-1])  # reverse the order to have the latest data on the top
+    # # df = df.rename(columns={'Monthly_Return': stock_name + "_Monthly_Return"})
+    print(df)
+    df.to_csv(result_file_name)
+
+# this method read the data downloaded from inversting.com, and calculate the monthly return rate base on the csv file
+def readExtraInvestingData(stockName: str,start_date="2003-1-1", end_date="2021-10-01"):
+    stock_name = stockName
+    stock_file_name = "./stock_price/"+stock_name + ".csv" # the historical price file
+    result_file_name = "./result/" + stock_name + ".csv"  # the historical price file
+
+    df = pandas.read_csv(stock_file_name, parse_dates=["Date"])
+    # keep only the date and close price
+    df = df[['Date', 'Price']]
+
+    # get the last element of a group
+    def get_last(df):
+        return df.head(1)
+
+    # group all the dataframe by year and month, and return, then return the last day of a month to a data frame
+    # group_keys = False so we do not have the leading group indexs (year and month)
+    df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    # set the date column as the index column
+    # convert the str value to float numbers
+    df = df_out.set_index(['Date'])
+    for i, col in df.iterrows():
+        if type(col[0])== str:
+            df.at[i, "Price"]= float(col[0].replace(",",""))
+    # print(df)
+    # calculate the percentage change
+    df = df.pct_change()
+
+    df = df.loc[start_date:end_date]
+    df['Price'] = df['Price'].apply(lambda x: format(x, '.2%'))  # change to percentage
+    df = df.reindex(index=df.index[::-1])  # reverse the order to have the latest data on the top
+    df = df.rename(columns={'Price': stock_name})
+
+    print(df)
+    df.to_csv(result_file_name)
+
+    print(df)
 
 def readDailyData(stockName: str, start_date="2003-1-1", end_date="2012-12-31"):
     stock_name = stockName
@@ -193,6 +253,12 @@ def readDailyDataWithDividen(stockName: str, start_date="2003-1-1", end_date="20
     df_div = pandas.read_csv(stock_dividend_file_name, parse_dates=["Date"])
     df_div = df_div[['Date', 'Dividends']]
 
+    # if df_div.empty:
+    #     df_div = df.copy()
+    #     for col in df_div:
+    #         df_div["Close"].values[:]=0
+    #     df_div = df_div.rename(columns={'Close': "Dividends"})
+
     # build a hashmap for dividends, key is yyyy-mm, value is the dividends
     dividends_dict = defaultdict(lambda: 0.0)
     for index, row in df_div.iterrows():
@@ -208,7 +274,12 @@ def readDailyDataWithDividen(stockName: str, start_date="2003-1-1", end_date="20
 
     # group all the dataframe by year and month, and return, then return the last day of a month to a data frame
     # group_keys = False so we do not have the leading group indexs (year and month)
-    df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    try:
+        df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    except:
+        df['Date'] = pandas.to_datetime(df['Date'])
+        df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    # df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
     # set the date column as the index column
     df = df_out.set_index(['Date'])
     # calculate the percentage change
@@ -237,6 +308,94 @@ def readDailyDataWithDividen(stockName: str, start_date="2003-1-1", end_date="20
     # print(df_pct)
     df = df.join(df_pct["Monthly_Return"])
     df = df[['Monthly_Return']]
+
+    # df = df.pct_change()
+    df = df.loc[start_date:end_date]
+    df['Monthly_Return'] = df['Monthly_Return'].apply(lambda x: format(x, '.2%'))  # change to percentage
+    df = df.reindex(index=df.index[::-1])  # reverse the order to have the latest data on the top
+    df = df.rename(columns={'Monthly_Return': stock_name+"_Monthly_Return"})
+    print(df)
+    df.to_csv(result_file_name)
+
+def readDailyDataWithDividenIndia(stockName: str, start_date="2003-1-1", end_date="2012-12-31"):
+    stock_name = stockName
+    stock_file_name = "./stock_price/" + stock_name + ".csv"  # the historical price file
+    stock_dividend_file_name = "./dividend/" + stock_name + "_div.csv"  # the dividend price file
+    result_file_name = "./result/"+stock_name + ".csv"  # the historical price file
+
+    # make the result folders
+    if not os.path.exists('result/'):
+        os.makedirs('result/')
+
+    # delete the result file if it is already exist
+    if os.path.exists(result_file_name):
+        os.remove(result_file_name)
+
+    # get the dataframe for historical data
+    df = pandas.read_csv(stock_file_name, parse_dates=["Date"])
+    df = df[['Date', 'Close']]
+
+    # get the dataframe for dividends
+    df_div = pandas.read_csv(stock_dividend_file_name, parse_dates=["Date"])
+    df_div = df_div[['Date', 'Dividends']]
+
+    # if df_div.empty:
+    #     df_div = df.copy()
+    #     for col in df_div:
+    #         df_div["Close"].values[:]=0
+    #     df_div = df_div.rename(columns={'Close': "Dividends"})
+
+    # build a hashmap for dividends, key is yyyy-mm, value is the dividends
+    dividends_dict = defaultdict(lambda: 0.0)
+    for index, row in df_div.iterrows():
+        key = str(row['Date'].year)+"-"+str(row['Date'].month)
+        val = row['Dividends']
+        dividends_dict[key] += val
+        # print(key, val)
+
+
+    # get the last element of a group
+    def get_last(df):
+        return df.head(1)
+
+    # group all the dataframe by year and month, and return, then return the last day of a month to a data frame
+    # group_keys = False so we do not have the leading group indexs (year and month)
+    try:
+        df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=True).apply(get_last)
+        print(df_out)
+    except:
+        df['Date'] = pandas.to_datetime(df['Date'])
+        df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    # df_out = df.groupby([df['Date'].dt.year, df['Date'].dt.month], group_keys=False).apply(get_last)
+    # set the date column as the index column
+    df = df_out.set_index(['Date'])
+    # calculate the percentage change
+    pct_change_list = []
+    date_time_list = []
+    buy_price = 0
+    counter = 0
+    for index, row in df.iterrows():
+        key = str(index.year) + "-" + str(index.month)
+        if counter ==0:
+            buy_price = row["Close"]
+            pct_change_list.append("NaN")
+            date_time_list.append(index)
+            counter +=1
+            continue
+        else:
+            sold_price = row["Close"]+dividends_dict[key]
+            pct_price = (sold_price-buy_price)/buy_price
+            pct_change_list.append(pct_price)
+            date_time_list.append(index)
+            buy_price = row["Close"]
+
+    df_pct = pandas.DataFrame({"Monthly_Return":pct_change_list,"Date":date_time_list})
+    df_pct = df_pct.set_index(['Date'])
+
+    # print(df_pct)
+    df = df.join(df_pct["Monthly_Return"])
+    df = df[['Monthly_Return']]
+
     # df = df.pct_change()
     df = df.loc[start_date:end_date]
     df['Monthly_Return'] = df['Monthly_Return'].apply(lambda x: format(x, '.2%'))  # change to percentage
@@ -250,9 +409,10 @@ def downloadAndPrintMontlyReturn(stock_name: str):
     readDailyData(stock_name)
 
 if __name__ == "__main__":
-    # stock_name = "IBM"
+    stock_name = "IBM"
     # stock_name = "KEP"
-    stock_name = "ABX.TO"
+    # stock_name = "ABX.TO"
+    # stock_name = "ENR.DE"
     # downloadDividendData(stock_name)
     # downloadDailyData(stock_name)
-    readDailyDataWithDividen(stock_name)
+    # readDailyDataWithDividen(stock_name)
